@@ -1,130 +1,59 @@
-# Use case -  Fraud detection with Intel® Optimizitations
 
-This tutorial, will provide a use case where a credit card company might benefit from machine learning techniques to predict fraudulent transactions. 
-
-## Part 1 - Preprocessing and initial data analysis
-
-In this part, you’ll prepare and preprocess data for an accurate representation of fraud and no-fraud examples using the Intel® Distribution of Modin* You’ll also use an anonymized dataset extracted from Kaggle (https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) 
-
-The Intel® Distribution of Modin will help you execute operations faster using the same API as pandas*. The library is fully compatible with the pandas API. OmniSci* powers the backend and provides accelerated analytics on Intel® platforms. (Here are installation instructions.)
-Note: Modin does not currently support distributed execution for all methods from the pandas API. The remaining unimplemented methods are executed in a mode called “default to pandas.” This allows users to continue using Modin even though their workloads contain functions not yet implemented in Modin.
+#### Use case - Fraud detection with [Intel® Distribution of Modin](https://www.intel.com/content/www/us/en/developer/tools/oneapi/distribution-of-modin.html#gs.7hvt6) and  [Intel® Extension for scikit-learn](https://www.intel.com/content/www/us/en/developer/tools/oneapi/scikit-learn.html#gs.iezgox)
 
 
-![image](https://www.intel.com/content/dam/develop/public/us/en/images/diagrams-infographics/diagram-modin-arch-16x9.jpg.rendition.intel.web.1072.603.jpg)
 
-### Import Modules and functions
+# Table of Contents
+1. [Section 1 : Pre-process](#section1)
+	1.	[Check for missing values](#missing)
+	2.	[Subsampling](#sub)
+3. [Section 2 : Data transformation](#section2)
+	1.	[Split Data](#split)
+	2.	[Transformations](#trans)
+	3. [Scaling](#scaling)
+	4. [Outliers](#outliers)
+	5. [Feature Engineering](#fe)
+3. [Section 3 : Train Your Fraud Detection Model with Intel® Extension for scikit-learn](#section3)
+	1.	[Algorithms](#algo)
+	2.	[Model 1 : Logistic Regression](#trans)
+	3. [Model 2 : Decision Trees](#scaling)
+	4. [Conclusion](#outliers)
+	5. [References](#fe)
 
-
-```python
-### Import modules and define functions
-
-import os
-import time
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-```
-
+First of all, you should install all the dependencies.
 
 ```python
-# Import regular pandas
-import pandas
+# Use ! if you are running this line on jupyter, or remove it if you'll be using it on your terminal.
+!pip install requirements.txt 
 ```
+Let's move on now you have the dependencies installed
 
+In this post, you’ll prepare and pre-process data with the [Intel® Distribution of Modin*] (https://www.intel.com/content/www/us/en/developer/tools/oneapi/distribution-of-modin.html#gs.7hvt6). You’ll also use an [anonymized dataset](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) extracted from Kaggle.
 
-```python
-# Import Modin 
+The Intel® Distribution of Modin will help you execute operations faster using the same API as [pandas](https://pandas.pydata.org/). The library is fully compatible with the [pandas API](https://pandas.pydata.org/docs/reference/index.html). OmniSci powers the backend and provides accelerated analytics on Intel® platforms. (Here are [installation instructions](https://www.intel.com/content/www/us/en/developer/tools/oneapi/distribution-of-modin.html#gs.8blx9q).) 
 
-#USE ONLY ONE OF THESE:
+Note: [Modin](https://modin.readthedocs.io/en/stable/) does not currently support distributed execution for all methods from the pandas API. The remaining unimplemented methods are executed in a mode called “default to pandas.” This allows users to continue using Modin even though their workloads contain functions not yet implemented in Modin. 
+![modin](README_files/modin.png)
 
-#os.environ["MODIN_ENGINE"] = "ray"  # Modin will use Ray
-os.environ["MODIN_ENGINE"] = "dask"  # Modin will use Dask
+<a name="section1"></a>
 
-import modin.pandas as pd
-```
+## Section 1 : Pre-process and Initial Data Analysis 
 
+The first step is to pre-process the data. After you download and extract the data, you’ll have it in spreadsheet format. That means you’ll work with tabular data where each row is a transaction (example) and each column is a feature (transaction amount, credit limit, age.) In this tutorial you won’t know which represents each feature, since the data has been anonymized for privacy purposes. This example uses supervised learning, meaning the algorithm is trained on a pre-defined set of examples. The examples are labeled with one column called LABEL (FRAUD or NOT FRAUD) 
 
-```python
-def plotter(outputdict):
-    fig = plt.figure(figsize = (10, 5)) 
-    plt.bar(outputdict.keys(),outputdict.values(),color='blue',width=0.4)
-    plt.xlabel("Python Package")
-    plt.ylabel("Runtime(seconds)")
-    plt.show()
-# ****** Do not change the code in this cell! It verifies that the notebook is being run correctly! ******
+![feature](https://user-images.githubusercontent.com/40643766/202277132-96cde020-a402-4a2b-bc6e-feb01985f3c4.png)
 
-def verify_and_print_times(pandas_time, modin_time):
-    if modin_time < pandas_time:
-        print(f"Modin was {pandas_time / modin_time:.2f}X faster than stock pandas!")
-        return
-    print(
-        f"Oops, stock pandas appears to be {modin_time / pandas_time:.2f}X faster than Modin in this case. "
-        "This is unlikely but could happen sometimes on certain machines/environments/datasets. "
-        "One of the most probable reasons is the excessive amount of partitions being assigned to a single worker. "
-        "You may visit Modin's optimization guide in order to learn more about such cases and how to fix them: "
-        "\nhttps://modin.readthedocs.io/en/latest/usage_guide/optimization_notes/index.html\n\n"
-        "But first, verify that you're using the latest Modin version, also, try to use different executions, "
-        "for basic usage we recommend non-experimental 'PandasOnRay'.\n"
-        "Current configuration is:"
-    )
-    try:
-        from modin.utils import get_current_execution
+In a real-world case, the data could come from multiple sources (such as SQL, Oracle Database* or Apache Spark*.) The idea is to have one spreadsheet file to put in the algorithm to train it. To do that, you need to concatenate or join multiple files to get one main dataset. Joining multiple sources can result in a main dataset with thousands of lines and hundreds of columns. Working with such a large file can strain on your computer/server for memory and processing, so it’s important to use optimized frameworks to speed up this task.
 
-        execution = get_current_execution()
-    except ImportError:
-        # for modin version < 0.12.0
-        try:
-            from modin.utils import get_current_backend
-
-            execution = get_current_backend()
-        except ImportError:
-            # for modin versions < 0.8.1
-            execution = (
-                "Can't deduce the current execution, your Modin version is too old!"
-            )
-    print(f"\tExecution: {execution}")
-    try:
-        import modin.config as cfg
-
-        print(
-            f"\tIs experimental: {cfg.IsExperimental.get()}\n"
-            f"\tNumber of CPUs to utilize by Modin (check that Modin uses all CPUs on your machine): {cfg.CpuCount.get()}\n"
-            f"\tIs in debug mode (debug mode may perform slower): {cfg.IsDebug.get()}"
-        )
-    except (ImportError, AttributeError):
-        # for modin versions < 0.8.2
-        print("\tCan't deduce Modin configuration, your Modin version is too old!")
-    import modin
-
-    print(f"\tModin version: {modin.__version__}")
-```
-
-###  Preprocessing and analysis of data
-
-The first step is to pre-process the data. After you download and extract the data, you’ll have it in spreadsheet format. That means you’ll work with tabular data where each row is a transaction (example) and each column is a feature (transaction amount, credit limit, age.) In this tutorial you won’t know which represents each feature, since the data has been anonymized for privacy purposes. This example uses supervised learning, meaning the algorithm) is trained on a pre-defined set of examples. The examples are labeled with one column called LABEL (FRAUD or NOT FRAUD)
-
-In a real-world case, the data could come from multiple sources (such as SQL, Oracle Database* or Apache Spark*.) The idea is to have one spreadsheet file to put in the algorithm to train it. To do that, you need to concatenate or join multiple files to get one main dataset. Joining multiple sources can result in a main dataset with thousands of lines and hundreds of columns. Working with such a large file can strain on your computer/server for memory and processing, so it’s important to use optimized frameworks to speed up this task. 
-
-First, load the dataset. You’ll use both regular pandas and optimized Modin-Pandas (pd). By using both, you’ll see the difference when your device uses all of its cores instead of using just one core. This will verify how Modin helps.
-
-
-```python
-# Locally unzip document donwloaded from Kaggle
-!unzip Dataset.csv.zip
-```
-
-    Archive:  Dataset.csv.zip
-      inflating: Dataset.csv             
-
-
+First, load the dataset. You’ll use both regular pandas and optimized Modin-Pandas (pd). By using both, you’ll see the difference when your device uses all of its cores instead of using just one core. This will demonstrate how Modin can help.
 
 ```python
 t0 = time.time()
-pandas_df = pandas.read_csv("Dataset.csv")
+pandas_df = pandas.read_csv("creditcard.csv")
 pandas_time = time.time()- t0
 
 t1 = time.time()
-modin_df = pd.read_csv("Dataset.csv")
+modin_df = pd.read_csv("creditcard.csv")
 modin_time = time.time() - t1
 
 print("Pandas Time(seconds):",pandas_time,"\nModin Time(seconds):",modin_time)
@@ -136,413 +65,135 @@ plotter(outputDict)
     Pandas Time(seconds): 0.904883861541748 
     Modin Time(seconds): 0.5271012783050537
     Modin was 1.72X faster than stock pandas!
+![compare](README_files/Main_16_1.png)
 
 
+Now that the dataset is loaded on your memory, take a closer look.
+<a name="missing"></a>
+### Check for missing values
 
-    
-![png](README_files/Main_16_1.png)
-    
+One of the first steps in data analysis is to check for missing values, because most algorithms can’t handle missing data. This verification is a useful shorthand to see if the data is accurate. It’s important to know how large the problem is to determine how to handle it. For example, 80% missing values is evidence of a bad dataset, but not a problem when that number is closer to 5%.
 
+![missing](README_files/missing.png)
 
-As you can see each feature starts with V. We could learn from the data in a real case scenario where we know wha each feature means. 
+There are multiple ways to address this problem. There are no good or bad decisions, try them out and see how the algorithm performs with each.  
 
-
-```python
-modin_df.head()
-```
-
-
-
-
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>Time</th>
-      <th>V1</th>
-      <th>V2</th>
-      <th>V3</th>
-      <th>V4</th>
-      <th>V5</th>
-      <th>V6</th>
-      <th>V7</th>
-      <th>V8</th>
-      <th>V9</th>
-      <th>...</th>
-      <th>V21</th>
-      <th>V22</th>
-      <th>V23</th>
-      <th>V24</th>
-      <th>V25</th>
-      <th>V26</th>
-      <th>V27</th>
-      <th>V28</th>
-      <th>Amount</th>
-      <th>Class</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>0</td>
-      <td>-1.359807</td>
-      <td>-0.072781</td>
-      <td>2.536347</td>
-      <td>1.378155</td>
-      <td>-0.338321</td>
-      <td>0.462388</td>
-      <td>0.239599</td>
-      <td>0.098698</td>
-      <td>0.363787</td>
-      <td>...</td>
-      <td>-0.018307</td>
-      <td>0.277838</td>
-      <td>-0.110474</td>
-      <td>0.066928</td>
-      <td>0.128539</td>
-      <td>-0.189115</td>
-      <td>0.133558</td>
-      <td>-0.021053</td>
-      <td>149.62</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>0</td>
-      <td>1.191857</td>
-      <td>0.266151</td>
-      <td>0.166480</td>
-      <td>0.448154</td>
-      <td>0.060018</td>
-      <td>-0.082361</td>
-      <td>-0.078803</td>
-      <td>0.085102</td>
-      <td>-0.255425</td>
-      <td>...</td>
-      <td>-0.225775</td>
-      <td>-0.638672</td>
-      <td>0.101288</td>
-      <td>-0.339846</td>
-      <td>0.167170</td>
-      <td>0.125895</td>
-      <td>-0.008983</td>
-      <td>0.014724</td>
-      <td>2.69</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1</td>
-      <td>-1.358354</td>
-      <td>-1.340163</td>
-      <td>1.773209</td>
-      <td>0.379780</td>
-      <td>-0.503198</td>
-      <td>1.800499</td>
-      <td>0.791461</td>
-      <td>0.247676</td>
-      <td>-1.514654</td>
-      <td>...</td>
-      <td>0.247998</td>
-      <td>0.771679</td>
-      <td>0.909412</td>
-      <td>-0.689281</td>
-      <td>-0.327642</td>
-      <td>-0.139097</td>
-      <td>-0.055353</td>
-      <td>-0.059752</td>
-      <td>378.66</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>1</td>
-      <td>-0.966272</td>
-      <td>-0.185226</td>
-      <td>1.792993</td>
-      <td>-0.863291</td>
-      <td>-0.010309</td>
-      <td>1.247203</td>
-      <td>0.237609</td>
-      <td>0.377436</td>
-      <td>-1.387024</td>
-      <td>...</td>
-      <td>-0.108300</td>
-      <td>0.005274</td>
-      <td>-0.190321</td>
-      <td>-1.175575</td>
-      <td>0.647376</td>
-      <td>-0.221929</td>
-      <td>0.062723</td>
-      <td>0.061458</td>
-      <td>123.50</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>2</td>
-      <td>-1.158233</td>
-      <td>0.877737</td>
-      <td>1.548718</td>
-      <td>0.403034</td>
-      <td>-0.407193</td>
-      <td>0.095921</td>
-      <td>0.592941</td>
-      <td>-0.270533</td>
-      <td>0.817739</td>
-      <td>...</td>
-      <td>-0.009431</td>
-      <td>0.798278</td>
-      <td>-0.137458</td>
-      <td>0.141267</td>
-      <td>-0.206010</td>
-      <td>0.502292</td>
-      <td>0.219422</td>
-      <td>0.215153</td>
-      <td>69.99</td>
-      <td>0</td>
-    </tr>
-  </tbody>
-</table>
-<p>5 rows x 31 columns</p>
-</div>
-
-
-
-Now that the dataset is loaded on your memory, take a closer look. 
-
-#### Dealing with Missing values
-
-One of the first steps in data analysis is to check for missing values, because most algorithms can’t handle missing data. This verification is a useful shorthand to see if the data is accurate. It’s important to know how large the problem is to determine how to handle it. For example, 80% missing values is evidence of a bad dataset, but not a problem when that number is close to 5%. 
-There are multiple ways to address the problem. There are no good or bad decisions, try them out and see how the algorithm performs with each.
-
-
-•	Remove the lines with missing values. If there aren’t very many missing values, a smaller dataset won’t be a problem.
-
-
-
-•	Impute value. Simulate a value to fill in the missing field. The idea is to use the example (line) but reduce the effect of missing values. Try replacing with the mean/maximum/minimum value of the feature (column.) You can also impute based on K-means, which will predict the value with an eye to the other values (columns.) 
-
-When you’re working with data extracted from outside sources, it’s worth factoring in system failures. These failures take the form of incomplete reporting – taking only partial snapshots of the dataset – and can result in missing values. 
-Let's check for missing values: 
-
-
+Remove the lines with missing values. If there aren’t very many missing values, a smaller dataset won’t be an issue. 
+Impute value. Simulate a value to fill in the missing field. The idea is to use the example (line) but reduce the effect of missing values. Try replacing with the mean/maximum/minimum value of the feature (column.) You can also impute based on K-means, which will predict the value with an eye to the other values (columns.)  
+When you’re working with data extracted from outside sources, it’s worth factoring in system failures. These failures take the form of incomplete reporting – taking only partial snapshots of the dataset – and can result in missing values.  
+Let's check for missing values:  
 
 ```python
-t0 = time.time()
-print(pandas_df.columns[pandas_df.isna().any()])
-pandas_time = time.time()- t0
+t0 = time.time() 
 
-t1 = time.time()
-print(modin_df.columns[modin_df.isna().any()])
-modin_time = time.time() - t1
+print(pandas_df.columns[pandas_df.isna().any()]) 
 
-print("Pandas Time(seconds):",pandas_time,"\nModin Time(seconds):",modin_time)
-verify_and_print_times(pandas_time, modin_time)
-outputDict={"Pandas":pandas_time,"Modin":modin_time}
+pandas_time = time.time()- t0 
+
+ 
+
+t1 = time.time() 
+
+print(modin_df.columns[modin_df.isna().any()]) 
+
+modin_time = time.time() - t1 
+
+Index([], dtype='object')  
+
+Index([], dtype='object') 
 ```
 
-    Index([], dtype='object')
-    Index([], dtype='object')
-    Pandas Time(seconds): 0.02335381507873535 
-    Modin Time(seconds): 0.23135614395141602
-    Oops, stock pandas appears to be 9.91X faster than Modin in this case. This is unlikely but could happen sometimes on certain machines/environments/datasets. One of the most probable reasons is the excessive amount of partitions being assigned to a single worker. You may visit Modin's optimization guide in order to learn more about such cases and how to fix them: 
-    https://modin.readthedocs.io/en/latest/usage_guide/optimization_notes/index.html
-    
-    But first, verify that you're using the latest Modin version, also, try to use different executions, for basic usage we recommend non-experimental 'PandasOnRay'.
-    Current configuration is:
-    	Execution: PandasOnDask
-    	Is experimental: None
-    	Number of CPUs to utilize by Modin (check that Modin uses all CPUs on your machine): 8
-    	Is in debug mode (debug mode may perform slower): None
-    	Modin version: 0.15.2
+Fortunately, in this example there are no missing values, so you can move on to sub-sampling. 
+<a name="subsampling"></a>
+### Subsampling
 
-
-Fortunately, in this example there are no missing values, so you can move on to sub-sampling.
-
-#### Sub sampling
-
-Take a look at the distribution of your data.
-
+Take a look at the distribution of your data. 
 
 ```python
-sub_sample_plot=sns.countplot(pandas_df["Class"])
-sub_sample_plot
+sub_sample_plot=sns.countplot(pandas_df["Class"]) 
+
+sub_sample_plot 
 ```
 
-    FutureWarning: Pass the following variable as a keyword arg: x. From version 0.12, the only valid positional argument will be `data`, and passing other arguments without an explicit keyword will result in an error or misinterpretation.
+![missing](README_files/Class_unbalanced.png)
 
+It’s clear that the class (FRAUD or NO FRAUD) is very unbalanced. That means that most cases aren't fraud and just a few are FRAUD.
 
-
-
-
-    <AxesSubplot:xlabel='Class', ylabel='count'>
-
-
-
-
-    
-![png](README_files/29_2.png)
-    
-
-
-It’s clear that the class (FRAUD or NO FRAUD) is very unbalanced. That means that most cases aren't fraud and just a few are FRAUD. 
 To train a model with the entire dataset, the model should learn how to detect the majority of cases (NO FRAUD), which is not what we want: We want to detect fraud.
+
 If a model is trained with this data, it would reach high levels of accuracy, but that’s not the outcome you want. (Part three of this tutorial explains how to select a metric based on the criteria you’re seeking.)
-Here are some ways to solve this problem:
 
+Here are some ways to solve this problem: 
 
+1. Obtain more FRAUD examples. Ask the dataset owner for more examples. Usually, however, you need to work with the dataset you have.
 
-1.	Obtain more FRAUD examples. Ask the dataset owner for more examples. Usually, however, you need to work with the dataset you have. 
-2.	Increase FRAUD examples: If there are examples of the class you want to detect, use an algorithm to generate a considerable number of examples of the desired class. This solution is used mainly in computer vision scenarios but works for others as well. 
-3.	Use a different dataset where the ratio of FRAUD to NO FRAUD is close to 1:1.
+2. Increase FRAUD examples: If there are examples of the class you want to detect, use an algorithm to generate a considerable number of examples of the desired class. This solution is used mainly in computer vision scenarios but works for others as well.
 
+3. Use a different dataset where the ratio of FRAUD to NO FRAUD is close to 1:1. 
 
-Now you’re ready to create a new dataset with a useful ratio for generalizing both classes.
-First, create a NEW balanced dataset. 
+Now you’re ready to create a new dataset with a useful ratio for generalizing both classes. 
 
-
-
+First, create a NEW balanced dataset.  
 
 ```python
-### GET NEW DATA SET 1.1
+modin_df_sub = modin_df.sample(frac=1)  #Shuffling the dataframe 
 
-#PANDAS
-t0 = time.time()
-pandas_df_sub = pandas_df.sample(frac=1)  #Shuffling the dataframe
+ 
 
-pandas_df_sub_nf = pandas_df_sub.loc[pandas_df["Class"] == 0][:492]
-pandas_df_sub_f = pandas_df_sub.loc[pandas_df["Class"]==1]
+modin_df_sub_nf = modin_df_sub.loc[modin_df["Class"] == 0][:492] 
 
-# Will reuse all fraud points, will random sample out 500 non-fraud points
+modin_df_sub_f = modin_df_sub.loc[modin_df["Class"]==1] 
 
-# New sample Table
-pandas_df_sub_distributed = pd.concat([pandas_df_sub_nf,pandas_df_sub_f])
-pandas_balanced = pandas_df_sub_distributed.sample(frac=1, random_state=42)
+ 
 
-# CALCULATE TIME 
-pandas_time = time.time()- t0
+# Will reuse all fraud points, will random sample out 492 non-fraud points 
 
-# MODIN
-t1 = time.time()
-modin_df_sub = modin_df.sample(frac=1)  #Shuffling the dataframe
+ 
 
-modin_df_sub_nf = modin_df_sub.loc[modin_df["Class"] == 0][:492]
-modin_df_sub_f = modin_df_sub.loc[modin_df["Class"]==1]
+# New sample Table 
 
-# Will reuse all fraud points, will random sample out 492 non-fraud points
+modin_df_sub_distributed = pd.concat([modin_df_sub_nf,modin_df_sub_f]) 
 
-# New sample Table
-modin_df_sub_distributed = pd.concat([modin_df_sub_nf,modin_df_sub_f])
-modin_balanced = modin_df_sub_distributed.sample(frac=1, random_state=42)
-
-modin_balanced.head()
-
-# CALCULATE TIME 
-modin_time = time.time()- t1
-
-print("Pandas Time(seconds):",pandas_time,"\nModin Time(seconds):",modin_time)
-verify_and_print_times(pandas_time, modin_time)
-outputDict={"Pandas":pandas_time,"Modin":modin_time}
+modin_balanced = modin_df_sub_distributed.sample(frac=1, random_state=42) 
 
 ```
-
-    UserWarning: Distributing <class 'pandas.core.frame.DataFrame'> object. This may take some time.
-
-
-    Pandas Time(seconds): 0.4385099411010742 
-    Modin Time(seconds): 1.3224921226501465
-    Oops, stock pandas appears to be 3.02X faster than Modin in this case. This is unlikely but could happen sometimes on certain machines/environments/datasets. One of the most probable reasons is the excessive amount of partitions being assigned to a single worker. You may visit Modin's optimization guide in order to learn more about such cases and how to fix them: 
-    https://modin.readthedocs.io/en/latest/usage_guide/optimization_notes/index.html
-    
-    But first, verify that you're using the latest Modin version, also, try to use different executions, for basic usage we recommend non-experimental 'PandasOnRay'.
-    Current configuration is:
-    	Execution: PandasOnDask
-    	Is experimental: None
-    	Number of CPUs to utilize by Modin (check that Modin uses all CPUs on your machine): 8
-    	Is in debug mode (debug mode may perform slower): None
-    	Modin version: 0.15.2
-
-
-The resulting balanced dataset makes it easier to train the algorithm.
-
+The resulting balanced dataset makes it easier to train the algorithm. 
 
 ```python
-print('No Frauds', round(modin_balanced['Class'].value_counts()[0]/len(modin_balanced) * 100,2), '% of the dataset')
-print('Frauds', round(modin_balanced['Class'].value_counts()[1]/len(modin_balanced) * 100,2), '% of the dataset')
+sub_sample_plot=sns.countplot(modin_balanced["Class"]) 
 
-#sub_sample_plot=sns.countplot(modin_balanced["Class"])
-#sub_sample_plot
-```
-
-    UserWarning: sort_values defaulting to pandas implementation.
-
-
-    No Frauds 50.0 % of the dataset
-    Frauds 50.0 % of the dataset
-
-
-    UserWarning: sort_values defaulting to pandas implementation.
-
-
-#### Conclusion for part 1
-
-Now you have the data necessary to demonstrate a fair representation of FRAUD and NO FRAUD examples. It should also be clear what advantages the Intel® Distribution of Modin provides -- with no code changes.
-
-In part two, you’ll analyze and transform the data and part three train the algorithm. 
-
-
-## Part 2 - Transformation
-
-#### Visualization
-
-#### Split the data
-
-A common mistake that can be done is to do all the preprocessing transformations to data before doing the separation between Train/Test/Valid sub samples. Because in a real case scenario de info that we have available is the training data while Test data will be what we are looking to predict, we’ll be transforming the training data with info that is present in test therefore there will be leaked data and the results will be biased. In resume, we could use the entire data to visualize it, but it must be divided as soon as we start working on transformations. 
-
-
-```python
-from sklearn.model_selection import train_test_split
+sub_sample_plot 
 ```
 
 
-```python
-# Split of Data
+Now you have the data necessary to demonstrate a fair representation of FRAUD and NO FRAUD examples. It should also be clear what advantages the Intel® Distribution of Modin provides — with no code changes. 
 
-data = modin_balanced.drop('Class', axis=1)       # Data whithout the label
-labels = modin_balanced['Class']                    # Label
+<a name="section2"></a>
 
-# Stratify will balance the data for train and test, test_size (20%), random_state ( it's a random seed to shuffle the data)
-X_train, X_test, y_train, y_test = train_test_split(data, labels, test_size=0.20, random_state=4,stratify=labels)
-```
+## Section 2 : Data transformation
 
+For this tutorial, you’ll need scikit-learn* ([sklearn](https://scikit-learn.org/stable)) It’s a very useful and robust libraries for machine learning in [Python](https://www.python.org/). It provides a selection of efficient tools for machine learning and statistical modeling including classification, regression, clustering, and dimensionality reduction through a consistent interface in Python. This library, which is largely written in Python, is built on [NumPy](https://numpy.org/), [SciPy](https://scipy.org/) and [Matplotlib](https://matplotlib.org/).  
 
-```python
-# Now that we have the train data and test, we'll focus on TRAIN data and TEST data will be used at the end of part 3 of this tutorial to verify the most real scenario performance
-```
+The Intel® Extension for scikit-learn offers you a way to accelerate existing scikit-learn code. The acceleration is achieved through patching: replacing the stock scikit-learn algorithms with their optimized versions provided by the extension (see the [guide](https://www.intel.com/content/www/us/en/developer/tools/oneapi/scikit-learn.html#gs.8yoqc6) That means you don’t need to learn a new library but still get the benefits of using scikit, optimized.  
+The example below will show the benefits.
+<a name="split"></a>
+### Split Data
 
-#### Scaling
+A common mistake is to perform all the preprocessing transformations on the data before performing the separation between train/test/valid sub-samples. In a real-word case, the data you’ll have available is the training data while test data will be what you’re going to predict. Making the transformation before splitting means that you’ll be transforming the training data with information present in the test dataset, meaning there will be contaminated data and the results will be biased.  
 
+How can you avoid it? Simple: by splitting the data. There are [multiple ways](https://towardsdatascience.com/how-to-select-a-data-splitting-method-4cf6bc6991da) to do it -- randomly, weighted, among others. Here, you’ll divide it randomly, but with balanced examples of both classes (50/50 if possible.)  It’s good practice to divide in a 80/20 ratio, meaning that 80% of our data will be used to train the model (there’s a validation dataset which could be the 20% of the train data, this is useful when training the model to see how it’s performing), and 20% will be used to verify how the model performs with data the model has never seen before.  
 
-```python
-# create list of column names to use later
-col_names = list(X_train.columns)
-```
+![missing](README_files/split.png)
 
+In short, we could use the whole dataset to visualize it, but it needs to be split up as soon as you start working on transformations.
+<a name="trans"></a>
+### Transformations 
+Now you’ll modify the data to make it easier for the algorithm to detect its behavior. These are the most common transformations, and even so they require patience. After training the model you’ll find out if these transformations were useful or not. You can train a model without any transformation, but it’s highly recommended to transform the data first. 
+
+A transformation can be understood as a modification of the data without changing its patterns. For example, if you have a feature called “age” represented in values between 0 and 100, it might be represented in groups such as young (0), adult (1), senior (2.)
+<a name="scaling"></a>
+### Scaling
+It's always a good idea to scale the data to reduce the effect of data represented in value ranges. The model might skew towards those features with bigger numbers, for example if “customer seniority” is represented from 0-20 and the “transaction amount” is between 1,000 and 10,000,000, the model might weight the “transaction amount” more than customer seniority. Which might be true, but you’ll be biased if the model is trained with data in this format. 
 
 ```python
 X_train.describe()
@@ -552,19 +203,6 @@ X_train.describe()
 
 
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -790,55 +428,23 @@ X_train.describe()
 <p>8 rows x 30 columns</p>
 </div>
 
+As you can see from the train data output, most of the features give us the impression that are “scaled” except for “time” and “amount,” which have larger numbers. Avoid using the data as it is now because the model would interpret “time” and “amount” as the two most important features. 
 
-
-
-```python
-X_train['Amount'].plot(kind='kde')
-```
-
-
-
-
-    <AxesSubplot:ylabel='Density'>
-
-
-
-
+If you plot amount and a feature (V1, orange), you'll notice that amount (blue) appears much lower and not centered at all. This happens because the values of V1 and amount are very different, and it will affect how our model can learn from those features. 
     
-![png](README_files/Main_47_1.png)
-    
-
-
 
 ```python
 X_train['Amount'].plot(kind='kde',xlim=(100,100))
 X_train['V1'].plot(kind='kde',xlim=(-100,100))
 ```
-
-    UserWarning: Attempting to set identical left == right == 100 results in singular transformations; automatically expanding.
-
-
-
-
-
-    <AxesSubplot:ylabel='Density'>
-
-
-
-
     
-![png](README_files/Main_48_2.png)
+![png](README_files/Density_2.png)
     
+Let’s scale the data now. The idea is to keep the same “smaller” distribution, representing the initial data between the same defined range to all features. 
 
+There are multiple tools and options to scale and you can do it manually, but scikit-learn* has an [API](https://scikit-learn.org/stable/modules/classes.html) to help with this task. It will depend on the data we have (here’s a good [guide](https://scikit-learn.org/stable/modules/preprocessing.html) to select useful calculations). 
 
-
-```python
-# Since most of our data has already been scaled we should scale the columns that are left to scale (Amount and Time)
-from sklearn.preprocessing import StandardScaler
-from pandas import DataFrame
-```
-
+In our example we’ll scale the data, using the [StandardScale function](https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.StandardScaler.html) (industry’s go-to algorithm), you can try others as [RobustScaler](http://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.RobustScaler.html). StandardScaler means that each feature will have a mean of 0, and each value is divided by the standard deviation. Your goal is to try to center the distribution of the data to reduce the effect of variables that are in a different scale. Note that if our data has outliers (as explained below), we should try to reduce the effect by using other scalers like RobustScaler
 
 ```python
 standard = StandardScaler()
@@ -853,19 +459,7 @@ dataset_std.describe()
 
 
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
 
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -1091,356 +685,18 @@ dataset_std.describe()
 <p>8 rows × 30 columns</p>
 </div>
 
+![png](README_files/normalized.png)
+<a name="outliers"></a>
+### Outliers
+Now that the data is almost ready to train our model, there’s another important thing to check. It’s well organized now but we can still find values in the features (columns) that can affect the model as it might be the presence of an outlier. 
 
+An outlier is a value whose distance from other values is abnormal (unusual.) For example, if most customer transactions (the mean) cluster around a value, let’s say $100. An outlier is a transaction of $1 million and using this value to train our model will have a negative effect because it misleads the training process resulting in longer training times, less accurate models, and ultimately poorer results. 
 
+Therefore, you need to know how to handle these values, whether they are mild or extreme. Outliers should be carefully investigated. They often contain valuable information about the process under investigation or the data gathering and recording process -- an error might add extra numbers and make the value appear as an outlier. Before considering removal, try to understand why they appeared and whether similar values are likely to continue to appear. Of course, outliers are often bad data points. 
 
-```python
-dataset_std.plot(kind='kde',xlim=([-5,5]),legend=False)
-```
+In this example, you’ll eliminate those values that are three times away from [interquartile range](https://en.wikipedia.org/wiki/Interquartile_range) (the difference between 25% and 75% of the data), which are called extreme outliers (1.5 of distance are regular outliers), since you are not able to understand the data (it’s anonymized, and we don’t know how the data was extracted.) To identify them, you can use two graphic techniques, [box plots](https://en.wikipedia.org/wiki/Box_plot) and [scatter plots](https://en.wikipedia.org/wiki/Scatter_plot).  
 
-
-
-
-    <AxesSubplot:ylabel='Density'>
-
-
-
-
-    
-![png](README_files/Main_51_1.png)
-    
-
-
-#### Outliers
-
-
-```python
-# Concatenate TRAIN dataset (scaled) --> data + labels
-
-y_train= y_train.reset_index(drop=True)
-X_train = pd.concat([dataset_std,y_train],axis=1)
-X_train
-```
-
-    UserWarning: Distributing <class 'pandas.core.frame.DataFrame'> object. This may take some time.
-
-
-
-
-
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>Time</th>
-      <th>V1</th>
-      <th>V2</th>
-      <th>V3</th>
-      <th>V4</th>
-      <th>V5</th>
-      <th>V6</th>
-      <th>V7</th>
-      <th>V8</th>
-      <th>V9</th>
-      <th>...</th>
-      <th>V21</th>
-      <th>V22</th>
-      <th>V23</th>
-      <th>V24</th>
-      <th>V25</th>
-      <th>V26</th>
-      <th>V27</th>
-      <th>V28</th>
-      <th>Amount</th>
-      <th>Class</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>-0.931710</td>
-      <td>-0.292010</td>
-      <td>0.444085</td>
-      <td>-0.357122</td>
-      <td>1.224578</td>
-      <td>1.050983</td>
-      <td>-1.133889</td>
-      <td>0.179829</td>
-      <td>-0.578419</td>
-      <td>-1.168593</td>
-      <td>...</td>
-      <td>-0.575883</td>
-      <td>0.614172</td>
-      <td>0.366098</td>
-      <td>-0.422950</td>
-      <td>0.973831</td>
-      <td>1.162860</td>
-      <td>0.677443</td>
-      <td>-0.610144</td>
-      <td>-0.465236</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>0.620759</td>
-      <td>0.816150</td>
-      <td>-0.596167</td>
-      <td>0.071255</td>
-      <td>-1.072022</td>
-      <td>0.993595</td>
-      <td>2.142962</td>
-      <td>0.436986</td>
-      <td>0.084939</td>
-      <td>0.729039</td>
-      <td>...</td>
-      <td>-0.187259</td>
-      <td>-0.386615</td>
-      <td>0.217291</td>
-      <td>1.337165</td>
-      <td>-0.079599</td>
-      <td>-0.326664</td>
-      <td>-0.124055</td>
-      <td>-0.266011</td>
-      <td>-0.379070</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>-0.957624</td>
-      <td>-1.262819</td>
-      <td>1.352052</td>
-      <td>-1.515460</td>
-      <td>1.665365</td>
-      <td>-2.141849</td>
-      <td>-0.823779</td>
-      <td>-1.286944</td>
-      <td>1.071420</td>
-      <td>-2.694402</td>
-      <td>...</td>
-      <td>0.468827</td>
-      <td>-1.005393</td>
-      <td>0.068742</td>
-      <td>0.889082</td>
-      <td>0.685179</td>
-      <td>-0.669480</td>
-      <td>0.458210</td>
-      <td>-1.222328</td>
-      <td>1.612137</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>0.077148</td>
-      <td>0.806494</td>
-      <td>-0.601160</td>
-      <td>0.475632</td>
-      <td>-0.625877</td>
-      <td>0.318048</td>
-      <td>0.583610</td>
-      <td>0.330068</td>
-      <td>-0.010575</td>
-      <td>1.716217</td>
-      <td>...</td>
-      <td>-0.254300</td>
-      <td>-0.580185</td>
-      <td>0.293389</td>
-      <td>0.139284</td>
-      <td>-0.673477</td>
-      <td>-1.483726</td>
-      <td>-0.094791</td>
-      <td>-0.229746</td>
-      <td>-0.443876</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>1.525878</td>
-      <td>0.825290</td>
-      <td>-0.799376</td>
-      <td>0.464408</td>
-      <td>-1.037969</td>
-      <td>0.138329</td>
-      <td>0.327781</td>
-      <td>0.279984</td>
-      <td>-0.036556</td>
-      <td>0.505778</td>
-      <td>...</td>
-      <td>-0.007266</td>
-      <td>0.926735</td>
-      <td>0.119476</td>
-      <td>1.546242</td>
-      <td>-0.259363</td>
-      <td>-0.346147</td>
-      <td>-0.084103</td>
-      <td>-0.224848</td>
-      <td>-0.333946</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>...</th>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-    </tr>
-    <tr>
-      <th>782</th>
-      <td>1.521763</td>
-      <td>0.538062</td>
-      <td>0.425656</td>
-      <td>-0.547379</td>
-      <td>1.306837</td>
-      <td>0.354082</td>
-      <td>-0.988639</td>
-      <td>-0.018359</td>
-      <td>0.054941</td>
-      <td>-0.989261</td>
-      <td>...</td>
-      <td>0.071405</td>
-      <td>-0.289311</td>
-      <td>-0.143466</td>
-      <td>-0.912854</td>
-      <td>0.957207</td>
-      <td>0.496965</td>
-      <td>0.845609</td>
-      <td>1.061156</td>
-      <td>-0.448501</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>783</th>
-      <td>0.705089</td>
-      <td>-0.063517</td>
-      <td>0.135798</td>
-      <td>-0.065058</td>
-      <td>-0.339521</td>
-      <td>0.090414</td>
-      <td>-0.325201</td>
-      <td>0.165102</td>
-      <td>0.007813</td>
-      <td>-0.212817</td>
-      <td>...</td>
-      <td>0.159160</td>
-      <td>1.072136</td>
-      <td>-0.212118</td>
-      <td>-0.833926</td>
-      <td>0.243630</td>
-      <td>0.174150</td>
-      <td>-0.011885</td>
-      <td>0.048915</td>
-      <td>0.186089</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>784</th>
-      <td>0.136727</td>
-      <td>-1.458413</td>
-      <td>1.219117</td>
-      <td>-1.607271</td>
-      <td>1.735654</td>
-      <td>-1.755303</td>
-      <td>-1.827051</td>
-      <td>-1.626221</td>
-      <td>1.130327</td>
-      <td>-1.960915</td>
-      <td>...</td>
-      <td>0.827204</td>
-      <td>0.975126</td>
-      <td>-0.455670</td>
-      <td>1.611295</td>
-      <td>0.814434</td>
-      <td>0.212383</td>
-      <td>-0.400563</td>
-      <td>0.043634</td>
-      <td>-0.465236</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>785</th>
-      <td>-0.817705</td>
-      <td>0.624347</td>
-      <td>-0.790459</td>
-      <td>0.571083</td>
-      <td>-0.580405</td>
-      <td>0.240951</td>
-      <td>0.910372</td>
-      <td>0.374053</td>
-      <td>-0.013814</td>
-      <td>0.408356</td>
-      <td>...</td>
-      <td>-0.259000</td>
-      <td>-0.637702</td>
-      <td>-0.206178</td>
-      <td>-2.483223</td>
-      <td>0.691692</td>
-      <td>-0.535836</td>
-      <td>-0.034841</td>
-      <td>0.001202</td>
-      <td>0.334884</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>786</th>
-      <td>-0.061898</td>
-      <td>0.656195</td>
-      <td>-0.460128</td>
-      <td>0.661976</td>
-      <td>-0.521527</td>
-      <td>0.237795</td>
-      <td>-0.019440</td>
-      <td>0.461996</td>
-      <td>-0.056864</td>
-      <td>0.649754</td>
-      <td>...</td>
-      <td>-0.213622</td>
-      <td>-0.519035</td>
-      <td>0.177708</td>
-      <td>0.739333</td>
-      <td>0.096799</td>
-      <td>0.197721</td>
-      <td>-0.102219</td>
-      <td>-0.066880</td>
-      <td>-0.465734</td>
-      <td>0</td>
-    </tr>
-  </tbody>
-</table>
-<p>787 rows x 31 columns</p>
-</div>
-
-
-
+Here’s an example, keeping in mind that in real-case scenario with more information about the features you could investigate further.
 
 ```python
 # Example to plot the outliers for 1 feature. You'll be using V5 
@@ -1453,13 +709,7 @@ plt.boxplot(X_train['V1'].loc[X_train['Class'] == 1],whis=3)    # "whis" is to d
 # show plot
 plt.show()
 ```
-
-
-    
-![png](README_files/Main_54_0.png)
-    
-
-
+![png](README_files/outliers.png)
 
 ```python
 ## # Example to plot the outliers for 1 feature
@@ -1491,7 +741,9 @@ print('V5 outliers:{}'.format(outliers))
     Feature V5 Outliers for Fraud Cases: 13
     V5 outliers:[-4.4292409026773525, -4.54813961123235, -4.082717450164329, -5.0642982754017325, -5.191529500732111, -4.0694218066414125, -4.886395884145655, -4.677233439377554, -4.451157410726059, -4.54813961123235, -4.9370625194319615, -4.196673160286453, -4.54813961123235]
 
+Now you can remove those outliers. Remember to do this process only once, because each time you do it you’ll uncover new outliers and reduce the dataset.  
 
+Next, take a look at those values. You’ll need to iterate through all the features to remove  extreme outliers in each one. 
 
 ```python
 # Let's remove the outliers
@@ -1512,1077 +764,196 @@ print('Number of Instances after outliers removal: {}'.format(len(X_train)))
 ```
 
     Number of Instances after outliers removal: 645
-
-
-
+    
+As you can see, our dataset is reduced but there’s still enough to train your model. This is not a 50/50 ratio anymore. You can divide again to get 50/50 if you want. However, 57/42 is still a good ratio between FRAUD and NO FRAUD cases. 
 ```python
-## This is the ratio FRAUD vs NO FRAUD
 print('No Frauds', round(X_train['Class'].value_counts()[0]/len(X_train) * 100,2), '% of the dataset')
 print('Frauds', round(X_train['Class'].value_counts()[1]/len(X_train) * 100,2), '% of the dataset')
 ```
-
-    UserWarning: sort_values defaulting to pandas implementation.
-
-
     No Frauds 57.98 % of the dataset
     Frauds 42.02 % of the dataset
+    
+<a name="fe"></a>
+### Feature engineering 
+ 
+ Lastly, there’s another important modification to make to your dataset. [Feature engineering](https://en.wikipedia.org/wiki/Feature_engineering) (FE) or means adding features that are not present and to help the algorithm detect patterns in data. Data scientists [call it](https://www.worldcat.org/title/1149291643) an art because you need to figure out which feature can be added to help and it involves deep understanding of the data. It’s a process of trial and error; don’t worry if that new feature doesn’t work when you test the results.  Auto machine learning ([AutoML](https://en.wikipedia.org/wiki/Automated_machine_learning)) [tools](https://github.com/epistasislab/tpot) can help. They automatically test parameters so you can find “optimal” feature combinations that can also be used during training.  
 
+For example, if you know the description of each feature, suppose there are two features called “amount” and “age.” You could create a new feature called “amount spent by age,” then create a function that splits age ranges and hashes them based on the amount spent. In some cases, it can also just be a categorical value. Here, the data is anonymized so adding features is tricky, but it’s important to be aware of FE. 
 
-    UserWarning: sort_values defaulting to pandas implementation.
+In this part, we highlighted the most important preprocessing techniques to use on a tabular data problem such as our fraud detection case.  
 
+Now your data is ready to be used to train a model (Part three.) The preprocessing and training stages are an [iterative process](https://en.wikipedia.org/wiki/Iterative_method) in which transformations performed may or may not help teach the algorithm. Remember that your goal is to have an algorithm that can work well on unseen data in the very last stage. You might have to repeat or modify this process several times to get there. 
 
-This is not a 50/50 ratio anymore. You can divide again to get 50/50 if you want. 57/42 is still a good ratio between FRAUD VS NO FRAUD CASES
+<a name="section3"></a>
 
-## Part 3 - Training
+## Section 3 : Training
 
-THIS PART SHOULD BE DONE IN PARALLEL, SK LEARN + SKLEARN PATCHED
+For this final part of the tutorial, you’ll need scikit-learn* (sklearn.) It’s the one of the most useful and robust libraries for machine learning in Python. It provides a selection of efficient tools for machine learning and statistical modeling including classification, regression, clustering, and dimensionality reduction through a consistent interface in Python. This library, largely written in Python, is built on NumPy, SciPy and Matplotlib. 
 
+The Intel® Extension for scikit-learn offers you a way to accelerate existing scikit-learn code. The acceleration is achieved through patching: replacing the stock scikit-learn algorithms with their optimized versions provided by the extension (see the guide). That means you don’t need to learn a new library but still get the benefits of using sklearn, optimized.  
+The example below will show the benefits.
 
-```python
-import numpy as np
+Which algorithm should you use? The one that best predicts your future data. That sounds simple but selecting the most advanced algorithm doesn’t mean that it will be useful on our data. It’ll be the one that gives you the best results (in test) over the metric we choose. Don’t expect a 100% accuracy because that's not a good sign: Decide in advance what would be an acceptable value (70%, 80%, 90%). Remember to consider how long it takes the algorithm to process the results. 
 
-# Turn on scikit-learn optimizations with these 2 simple lines:
+<a name="algo"></a>
+### Algorithms
 
-from sklearnex import patch_sklearn
+Now you’ll explore two families of algorithms: logistic regression and decision trees. Before diving in, you’ll need a basic understanding of how metrics work and how they can help us to understand the behavior of the model.
 
-patch_sklearn()
+#### Accuracy / Precision / Recall / F1 score
 
-```
+Each metric has advantages and disadvantages, and each of them will give you specific information on the strengths and weaknesses of your model. 
 
+Even if the words “accuracy” and "precision” have similar meanings, for artificial intelligence they are two different concepts. When you need to know the overall performance of the model, pay attention to accuracy only. This is defined as simply the fraction of correct classifications (correct classifications/all classifications). It won’t help in cases like this one, where it’s important to get a model that can detect fraud cases because it’s a metric that works to detect all correct predictions regardless of whether they are fraud or not fraud. In other words, accuracy can answer this question: Of all the classified examples (fraud and no fraud) what percentage did the model get right?  
 
-    ---------------------------------------------------------------------------
+Moreover, in AI the term precision considers both true positives (TP) and false positives (FP) (TP/(TP+FP)). This will give you a ratio between hits and errors for each class for positive predictions. In other words, a precise answer to this question: Of the examples the model flags as fraud, what percentage were actually fraud?  
 
-    ModuleNotFoundError                       Traceback (most recent call last)
+Finally, the term “recall” differs to precision because it considers false negatives (FN) (TP/(TP+FN). It gives you more information because it also considers those examples that the model classified incorrectly as no fraud when they are fraud.   
 
-    /Users/emlanza/Library/CloudStorage/OneDrive-IntelCorporation/Technical/S2E/Content/Modin_Pandas/1 Load and analysis/Main.ipynb Cell 61 in <cell line: 5>()
-          <a href='vscode-notebook-cell:/Users/emlanza/Library/CloudStorage/OneDrive-IntelCorporation/Technical/S2E/Content/Modin_Pandas/1%20Load%20and%20analysis/Main.ipynb#Y114sZmlsZQ%3D%3D?line=0'>1</a> import numpy as np
-          <a href='vscode-notebook-cell:/Users/emlanza/Library/CloudStorage/OneDrive-IntelCorporation/Technical/S2E/Content/Modin_Pandas/1%20Load%20and%20analysis/Main.ipynb#Y114sZmlsZQ%3D%3D?line=2'>3</a> # Turn on scikit-learn optimizations with these 2 simple lines:
-    ----> <a href='vscode-notebook-cell:/Users/emlanza/Library/CloudStorage/OneDrive-IntelCorporation/Technical/S2E/Content/Modin_Pandas/1%20Load%20and%20analysis/Main.ipynb#Y114sZmlsZQ%3D%3D?line=4'>5</a> from sklearnex import patch_sklearn
-          <a href='vscode-notebook-cell:/Users/emlanza/Library/CloudStorage/OneDrive-IntelCorporation/Technical/S2E/Content/Modin_Pandas/1%20Load%20and%20analysis/Main.ipynb#Y114sZmlsZQ%3D%3D?line=6'>7</a> patch_sklearn()
+In other words, recall answers this question: Of the examples that were actually fraud, what percentage was predicted as fraud by the model? 
 
+There’s one more metric to keep in mind called the F1-Score, an average between precision and recall. You’ll get a harmonic mean, which can be useful because it represents both precision and recall represented in just one metric.
 
-    ModuleNotFoundError: No module named 'sklearnex'
+![png](README_files/accuracy.png)
 
+#### Confusion matrix
+This a table with the combinations of predicted and real values. It shows how many examples are TP, NP, FN, TN. 
 
+Now you’re ready to build your models. Depending on which algorithm and framework you're using, there are different ways to train the model. Intel optimizations can help speed them up, too. There are several approaches to consider including regression, decision trees, neural networks and support vector machines among others.  
 
-```python
-
-```
-
-
-
-
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>Time</th>
-      <th>V1</th>
-      <th>V2</th>
-      <th>V3</th>
-      <th>V4</th>
-      <th>V5</th>
-      <th>V6</th>
-      <th>V7</th>
-      <th>V8</th>
-      <th>V9</th>
-      <th>...</th>
-      <th>V20</th>
-      <th>V21</th>
-      <th>V22</th>
-      <th>V23</th>
-      <th>V24</th>
-      <th>V25</th>
-      <th>V26</th>
-      <th>V27</th>
-      <th>V28</th>
-      <th>Amount</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>count</th>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>...</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-    </tr>
-    <tr>
-      <th>mean</th>
-      <td>0.011352</td>
-      <td>0.030801</td>
-      <td>-0.088349</td>
-      <td>0.063020</td>
-      <td>0.032736</td>
-      <td>0.057808</td>
-      <td>0.040946</td>
-      <td>0.045894</td>
-      <td>0.030601</td>
-      <td>0.004702</td>
-      <td>...</td>
-      <td>0.049065</td>
-      <td>0.028752</td>
-      <td>0.038811</td>
-      <td>0.094954</td>
-      <td>0.024982</td>
-      <td>-0.074859</td>
-      <td>-0.047478</td>
-      <td>0.073452</td>
-      <td>-0.036414</td>
-      <td>0.000324</td>
-    </tr>
-    <tr>
-      <th>std</th>
-      <td>1.039996</td>
-      <td>0.902352</td>
-      <td>0.948014</td>
-      <td>0.924973</td>
-      <td>1.005670</td>
-      <td>0.875423</td>
-      <td>0.948392</td>
-      <td>0.920425</td>
-      <td>0.956491</td>
-      <td>1.004197</td>
-      <td>...</td>
-      <td>1.057409</td>
-      <td>0.963620</td>
-      <td>0.972642</td>
-      <td>0.689040</td>
-      <td>1.013579</td>
-      <td>0.941981</td>
-      <td>0.860024</td>
-      <td>0.839175</td>
-      <td>0.918571</td>
-      <td>1.087000</td>
-    </tr>
-    <tr>
-      <th>min</th>
-      <td>-1.800936</td>
-      <td>-4.779891</td>
-      <td>-3.090529</td>
-      <td>-4.184283</td>
-      <td>-1.583939</td>
-      <td>-4.557529</td>
-      <td>-2.499975</td>
-      <td>-6.501056</td>
-      <td>-7.912765</td>
-      <td>-5.219308</td>
-      <td>...</td>
-      <td>-3.490074</td>
-      <td>-7.714451</td>
-      <td>-7.552087</td>
-      <td>-2.874629</td>
-      <td>-2.595427</td>
-      <td>-3.131167</td>
-      <td>-2.354796</td>
-      <td>-5.314297</td>
-      <td>-3.450326</td>
-      <td>-0.411216</td>
-    </tr>
-    <tr>
-      <th>25%</th>
-      <td>-0.924319</td>
-      <td>-0.047816</td>
-      <td>-0.598933</td>
-      <td>-0.214961</td>
-      <td>-0.745674</td>
-      <td>-0.038834</td>
-      <td>-0.459256</td>
-      <td>-0.045149</td>
-      <td>-0.072272</td>
-      <td>-0.394390</td>
-      <td>...</td>
-      <td>-0.372764</td>
-      <td>-0.162573</td>
-      <td>-0.413456</td>
-      <td>-0.121606</td>
-      <td>-0.650826</td>
-      <td>-0.590202</td>
-      <td>-0.645720</td>
-      <td>-0.110728</td>
-      <td>-0.242933</td>
-      <td>-0.403256</td>
-    </tr>
-    <tr>
-      <th>50%</th>
-      <td>-0.245741</td>
-      <td>0.278937</td>
-      <td>-0.280425</td>
-      <td>0.363829</td>
-      <td>-0.264031</td>
-      <td>0.278594</td>
-      <td>0.075784</td>
-      <td>0.366489</td>
-      <td>-0.003764</td>
-      <td>0.253694</td>
-      <td>...</td>
-      <td>-0.155479</td>
-      <td>-0.050568</td>
-      <td>0.092851</td>
-      <td>0.023743</td>
-      <td>0.063408</td>
-      <td>-0.084497</td>
-      <td>-0.117191</td>
-      <td>0.002257</td>
-      <td>-0.030054</td>
-      <td>-0.349271</td>
-    </tr>
-    <tr>
-      <th>75%</th>
-      <td>1.081009</td>
-      <td>0.584392</td>
-      <td>0.203858</td>
-      <td>0.626349</td>
-      <td>0.609173</td>
-      <td>0.484099</td>
-      <td>0.473244</td>
-      <td>0.526287</td>
-      <td>0.135534</td>
-      <td>0.608263</td>
-      <td>...</td>
-      <td>0.303650</td>
-      <td>0.117587</td>
-      <td>0.509938</td>
-      <td>0.227130</td>
-      <td>0.779735</td>
-      <td>0.469021</td>
-      <td>0.452732</td>
-      <td>0.370873</td>
-      <td>0.283715</td>
-      <td>-0.076047</td>
-    </tr>
-    <tr>
-      <th>max</th>
-      <td>1.730501</td>
-      <td>0.802213</td>
-      <td>5.298545</td>
-      <td>1.112492</td>
-      <td>3.032422</td>
-      <td>1.593409</td>
-      <td>3.905529</td>
-      <td>1.114062</td>
-      <td>3.816826</td>
-      <td>2.184109</td>
-      <td>...</td>
-      <td>9.684125</td>
-      <td>9.523986</td>
-      <td>7.115195</td>
-      <td>4.365405</td>
-      <td>2.210557</td>
-      <td>3.091004</td>
-      <td>2.377754</td>
-      <td>2.553971</td>
-      <td>3.387225</td>
-      <td>11.476412</td>
-    </tr>
-  </tbody>
-</table>
-<p>8 rows × 30 columns</p>
-</div>
+Here we’ll test regressions and decision trees and [this GitHub notebook](https://github.com/ezelanza/tutorials/blob/main/Optimized%20Fraud%20Detection/Main.ipynb) will show how Intel optimizations can help. 
 
 
 
+### Model 1: Logistic Regression
+
+Regression is a statistical method by which one variable is explained or understood on the basis of one or more variables. The variable being explained is called the dependent, or response, variable; the other variables used to explain or predict the response are called independent variables (Hilbe, 2017) 
+
+Regression is a type of supervised learning. Making the model fit can result in slow training but the prediction is fast. It can’t help in scenarios where the relationship between them is not easy to predict (complex relationships). 
+
+To understand logistic regression, you need to understand a linear regression first. 
+
+Let’s say you would like to predict the number of lines coded based on time coding (1 dependant variable) Image 2. A linear regression will find a function (blue dotted line) that can return a value (lines) when you give your input variable (hours coding), there is a multivariable regression when you have multiple dependant variables, but the concept is still the same. Linear Regression (dotted line) then will return a continuous value (number). It won’t be helpful in this Fraud detection case where you are looking to a classification of “fraud” or “not fraud”.
+![png](README_files/log_reg.png)
+
+Then, you’ll use Logistic Regression (image 3). It will give you “true” and “false” values (fraud or not fraud). Instead of fitting a line, logistic regression fits an “S” shape which corresponds to a probability value of being “true,” in other words a value between 0 and 1 where the model will consider “true” if it’s higher than 0.5.
+
+To classify, start from an input value marked in green (X-axis), and a line is drawn up to the intersection with the blue line (log reg), with the value in Y-axis as the result for that value. Because the match here is less than 0.5 (0.41) it will be labeled as "fraud." You can calculate all the test values using the same procedure. This is done automatically when you ask the model to "label" your cases.
+
+![png](README_files/log_reg_2.png)
+
+#### Train
+You’ll start training the model, using sklearn API “[fit](https://scikit-learn.org/stable/developers/develop.html)”. It will train the model with X (train data without labels) and y (labels of train data). Pretty straightforward.
 
 ```python
-## If we suppose that the data we have in TEST is new, we should treat it as it's new.
-## It means that we have to do the same transformations we did in train with the exception that now the estimators used to transform won't be "fitted" (we already did that with trainin data)
-#In our case we just did a standard transformation
-
-test = standard.transform(X_test)    # it's importat to use "transform" instead of fit_transform
-
-# convert the array back to a dataframe
-test = DataFrame(test, columns=col_names)
-test.describe()
-
-```
-
-
-
-
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>Time</th>
-      <th>V1</th>
-      <th>V2</th>
-      <th>V3</th>
-      <th>V4</th>
-      <th>V5</th>
-      <th>V6</th>
-      <th>V7</th>
-      <th>V8</th>
-      <th>V9</th>
-      <th>...</th>
-      <th>V20</th>
-      <th>V21</th>
-      <th>V22</th>
-      <th>V23</th>
-      <th>V24</th>
-      <th>V25</th>
-      <th>V26</th>
-      <th>V27</th>
-      <th>V28</th>
-      <th>Amount</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>count</th>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>...</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-      <td>197.000000</td>
-    </tr>
-    <tr>
-      <th>mean</th>
-      <td>-0.003835</td>
-      <td>-0.097704</td>
-      <td>0.068405</td>
-      <td>-0.118176</td>
-      <td>-0.033995</td>
-      <td>-0.109735</td>
-      <td>-0.098450</td>
-      <td>-0.100397</td>
-      <td>0.051843</td>
-      <td>0.005363</td>
-      <td>...</td>
-      <td>0.118106</td>
-      <td>-0.115671</td>
-      <td>0.088600</td>
-      <td>0.015693</td>
-      <td>-0.066250</td>
-      <td>0.070480</td>
-      <td>0.013481</td>
-      <td>0.049590</td>
-      <td>-0.102150</td>
-      <td>-0.081908</td>
-    </tr>
-    <tr>
-      <th>std</th>
-      <td>0.980370</td>
-      <td>1.180450</td>
-      <td>1.128251</td>
-      <td>1.187752</td>
-      <td>1.089900</td>
-      <td>1.126115</td>
-      <td>0.968000</td>
-      <td>1.141959</td>
-      <td>0.957524</td>
-      <td>1.122487</td>
-      <td>...</td>
-      <td>1.202796</td>
-      <td>0.751944</td>
-      <td>0.882031</td>
-      <td>0.567791</td>
-      <td>1.100435</td>
-      <td>1.006819</td>
-      <td>0.956513</td>
-      <td>1.170253</td>
-      <td>1.275726</td>
-      <td>0.766878</td>
-    </tr>
-    <tr>
-      <th>min</th>
-      <td>-1.812764</td>
-      <td>-5.318757</td>
-      <td>-3.405863</td>
-      <td>-4.637465</td>
-      <td>-1.940974</td>
-      <td>-5.035482</td>
-      <td>-2.490535</td>
-      <td>-7.208986</td>
-      <td>-8.348251</td>
-      <td>-5.329147</td>
-      <td>...</td>
-      <td>-4.317766</td>
-      <td>-7.938071</td>
-      <td>-1.891574</td>
-      <td>-1.343593</td>
-      <td>-3.671579</td>
-      <td>-2.952032</td>
-      <td>-2.267124</td>
-      <td>-7.564318</td>
-      <td>-9.236685</td>
-      <td>-0.469771</td>
-    </tr>
-    <tr>
-      <th>25%</th>
-      <td>-0.849749</td>
-      <td>-0.237275</td>
-      <td>-0.563632</td>
-      <td>-0.298254</td>
-      <td>-0.789570</td>
-      <td>-0.113230</td>
-      <td>-0.566111</td>
-      <td>-0.141457</td>
-      <td>-0.098402</td>
-      <td>-0.540416</td>
-      <td>...</td>
-      <td>-0.343804</td>
-      <td>-0.207336</td>
-      <td>-0.478551</td>
-      <td>-0.224891</td>
-      <td>-0.746838</td>
-      <td>-0.491842</td>
-      <td>-0.596818</td>
-      <td>-0.130098</td>
-      <td>-0.252972</td>
-      <td>-0.460701</td>
-    </tr>
-    <tr>
-      <th>50%</th>
-      <td>-0.064517</td>
-      <td>0.254746</td>
-      <td>-0.247052</td>
-      <td>0.328568</td>
-      <td>-0.428732</td>
-      <td>0.268644</td>
-      <td>0.006856</td>
-      <td>0.342834</td>
-      <td>-0.025456</td>
-      <td>0.316327</td>
-      <td>...</td>
-      <td>-0.123752</td>
-      <td>-0.082710</td>
-      <td>-0.038448</td>
-      <td>-0.024508</td>
-      <td>0.079185</td>
-      <td>0.084865</td>
-      <td>-0.052416</td>
-      <td>-0.028113</td>
-      <td>-0.046097</td>
-      <td>-0.379115</td>
-    </tr>
-    <tr>
-      <th>75%</th>
-      <td>0.908452</td>
-      <td>0.636078</td>
-      <td>0.345374</td>
-      <td>0.596243</td>
-      <td>0.650147</td>
-      <td>0.456442</td>
-      <td>0.347966</td>
-      <td>0.527742</td>
-      <td>0.171243</td>
-      <td>0.644560</td>
-      <td>...</td>
-      <td>0.364788</td>
-      <td>0.080770</td>
-      <td>0.568465</td>
-      <td>0.137655</td>
-      <td>0.758832</td>
-      <td>0.597352</td>
-      <td>0.655547</td>
-      <td>0.419621</td>
-      <td>0.287480</td>
-      <td>-0.029870</td>
-    </tr>
-    <tr>
-      <th>max</th>
-      <td>1.725646</td>
-      <td>0.860015</td>
-      <td>5.682596</td>
-      <td>0.941471</td>
-      <td>3.069580</td>
-      <td>1.694193</td>
-      <td>4.298885</td>
-      <td>1.185349</td>
-      <td>3.996278</td>
-      <td>4.105747</td>
-      <td>...</td>
-      <td>10.897598</td>
-      <td>1.987677</td>
-      <td>6.941656</td>
-      <td>4.412619</td>
-      <td>1.734593</td>
-      <td>3.303562</td>
-      <td>2.499255</td>
-      <td>2.284815</td>
-      <td>3.362195</td>
-      <td>5.889101</td>
-    </tr>
-  </tbody>
-</table>
-<p>8 rows × 30 columns</p>
-</div>
-
-
-
-##### Logistic Regresion
-
-
-```python
-from sklearn.linear_model import LogisticRegression
-```
-
-
-```python
-X_train
-```
-
-
-
-
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>Time</th>
-      <th>V1</th>
-      <th>V2</th>
-      <th>V3</th>
-      <th>V4</th>
-      <th>V5</th>
-      <th>V6</th>
-      <th>V7</th>
-      <th>V8</th>
-      <th>V9</th>
-      <th>...</th>
-      <th>V21</th>
-      <th>V22</th>
-      <th>V23</th>
-      <th>V24</th>
-      <th>V25</th>
-      <th>V26</th>
-      <th>V27</th>
-      <th>V28</th>
-      <th>Amount</th>
-      <th>Class</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>-0.931710</td>
-      <td>-0.292010</td>
-      <td>0.444085</td>
-      <td>-0.357122</td>
-      <td>1.224578</td>
-      <td>1.050983</td>
-      <td>-1.133889</td>
-      <td>0.179829</td>
-      <td>-0.578419</td>
-      <td>-1.168593</td>
-      <td>...</td>
-      <td>-0.575883</td>
-      <td>0.614172</td>
-      <td>0.366098</td>
-      <td>-0.422950</td>
-      <td>0.973831</td>
-      <td>1.162860</td>
-      <td>0.677443</td>
-      <td>-0.610144</td>
-      <td>-0.465236</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>0.620759</td>
-      <td>0.816150</td>
-      <td>-0.596167</td>
-      <td>0.071255</td>
-      <td>-1.072022</td>
-      <td>0.993595</td>
-      <td>2.142962</td>
-      <td>0.436986</td>
-      <td>0.084939</td>
-      <td>0.729039</td>
-      <td>...</td>
-      <td>-0.187259</td>
-      <td>-0.386615</td>
-      <td>0.217291</td>
-      <td>1.337165</td>
-      <td>-0.079599</td>
-      <td>-0.326664</td>
-      <td>-0.124055</td>
-      <td>-0.266011</td>
-      <td>-0.379070</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>0.077148</td>
-      <td>0.806494</td>
-      <td>-0.601160</td>
-      <td>0.475632</td>
-      <td>-0.625877</td>
-      <td>0.318048</td>
-      <td>0.583610</td>
-      <td>0.330068</td>
-      <td>-0.010575</td>
-      <td>1.716217</td>
-      <td>...</td>
-      <td>-0.254300</td>
-      <td>-0.580185</td>
-      <td>0.293389</td>
-      <td>0.139284</td>
-      <td>-0.673477</td>
-      <td>-1.483726</td>
-      <td>-0.094791</td>
-      <td>-0.229746</td>
-      <td>-0.443876</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>1.525878</td>
-      <td>0.825290</td>
-      <td>-0.799376</td>
-      <td>0.464408</td>
-      <td>-1.037969</td>
-      <td>0.138329</td>
-      <td>0.327781</td>
-      <td>0.279984</td>
-      <td>-0.036556</td>
-      <td>0.505778</td>
-      <td>...</td>
-      <td>-0.007266</td>
-      <td>0.926735</td>
-      <td>0.119476</td>
-      <td>1.546242</td>
-      <td>-0.259363</td>
-      <td>-0.346147</td>
-      <td>-0.084103</td>
-      <td>-0.224848</td>
-      <td>-0.333946</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>5</th>
-      <td>0.549106</td>
-      <td>0.784728</td>
-      <td>-0.619430</td>
-      <td>0.395881</td>
-      <td>-0.711295</td>
-      <td>0.324055</td>
-      <td>0.083070</td>
-      <td>0.463957</td>
-      <td>-0.064097</td>
-      <td>0.732609</td>
-      <td>...</td>
-      <td>-0.270303</td>
-      <td>-1.096082</td>
-      <td>0.353031</td>
-      <td>-0.908473</td>
-      <td>-1.138538</td>
-      <td>0.019018</td>
-      <td>-0.171433</td>
-      <td>-0.232575</td>
-      <td>-0.107284</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>...</th>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-      <td>...</td>
-    </tr>
-    <tr>
-      <th>782</th>
-      <td>1.521763</td>
-      <td>0.538062</td>
-      <td>0.425656</td>
-      <td>-0.547379</td>
-      <td>1.306837</td>
-      <td>0.354082</td>
-      <td>-0.988639</td>
-      <td>-0.018359</td>
-      <td>0.054941</td>
-      <td>-0.989261</td>
-      <td>...</td>
-      <td>0.071405</td>
-      <td>-0.289311</td>
-      <td>-0.143466</td>
-      <td>-0.912854</td>
-      <td>0.957207</td>
-      <td>0.496965</td>
-      <td>0.845609</td>
-      <td>1.061156</td>
-      <td>-0.448501</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>783</th>
-      <td>0.705089</td>
-      <td>-0.063517</td>
-      <td>0.135798</td>
-      <td>-0.065058</td>
-      <td>-0.339521</td>
-      <td>0.090414</td>
-      <td>-0.325201</td>
-      <td>0.165102</td>
-      <td>0.007813</td>
-      <td>-0.212817</td>
-      <td>...</td>
-      <td>0.159160</td>
-      <td>1.072136</td>
-      <td>-0.212118</td>
-      <td>-0.833926</td>
-      <td>0.243630</td>
-      <td>0.174150</td>
-      <td>-0.011885</td>
-      <td>0.048915</td>
-      <td>0.186089</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>784</th>
-      <td>0.136727</td>
-      <td>-1.458413</td>
-      <td>1.219117</td>
-      <td>-1.607271</td>
-      <td>1.735654</td>
-      <td>-1.755303</td>
-      <td>-1.827051</td>
-      <td>-1.626221</td>
-      <td>1.130327</td>
-      <td>-1.960915</td>
-      <td>...</td>
-      <td>0.827204</td>
-      <td>0.975126</td>
-      <td>-0.455670</td>
-      <td>1.611295</td>
-      <td>0.814434</td>
-      <td>0.212383</td>
-      <td>-0.400563</td>
-      <td>0.043634</td>
-      <td>-0.465236</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>785</th>
-      <td>-0.817705</td>
-      <td>0.624347</td>
-      <td>-0.790459</td>
-      <td>0.571083</td>
-      <td>-0.580405</td>
-      <td>0.240951</td>
-      <td>0.910372</td>
-      <td>0.374053</td>
-      <td>-0.013814</td>
-      <td>0.408356</td>
-      <td>...</td>
-      <td>-0.259000</td>
-      <td>-0.637702</td>
-      <td>-0.206178</td>
-      <td>-2.483223</td>
-      <td>0.691692</td>
-      <td>-0.535836</td>
-      <td>-0.034841</td>
-      <td>0.001202</td>
-      <td>0.334884</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>786</th>
-      <td>-0.061898</td>
-      <td>0.656195</td>
-      <td>-0.460128</td>
-      <td>0.661976</td>
-      <td>-0.521527</td>
-      <td>0.237795</td>
-      <td>-0.019440</td>
-      <td>0.461996</td>
-      <td>-0.056864</td>
-      <td>0.649754</td>
-      <td>...</td>
-      <td>-0.213622</td>
-      <td>-0.519035</td>
-      <td>0.177708</td>
-      <td>0.739333</td>
-      <td>0.096799</td>
-      <td>0.197721</td>
-      <td>-0.102219</td>
-      <td>-0.066880</td>
-      <td>-0.465734</td>
-      <td>0</td>
-    </tr>
-  </tbody>
-</table>
-<p>645 rows x 31 columns</p>
-</div>
-
-
-
-
-```python
-# We would need to divide the dataset
-
-X= X_train.drop(columns=['Class'])
-y= X_train['Class']
-```
-
-
-```python
-# Train the model
-from sklearn.metrics import classification_report
-
 clf = LogisticRegression(random_state=0).fit(X, y)
-
-y_pred= clf.predict(X)
-target_names = ["FRADUD","NO FRAUD"]
-
-print(classification_report(y, y_pred,target_names=target_names))
-
 ```
 
-                  precision    recall  f1-score   support
-    
-          FRADUD       0.94      0.99      0.96       374
-        NO FRAUD       0.99      0.91      0.95       271
-    
-        accuracy                           0.96       645
-       macro avg       0.96      0.95      0.96       645
-    weighted avg       0.96      0.96      0.96       645
-    
-
-
+#### Performance in TRAIN
+Once the model is trained, you can take a better look at its performance and start predicting the labels for the “train” dataset. Note: sklearn will provide you with the label (1 or 0), you can use predict.proba  to see the probabilities.
 
 ```python
-## Confusion matrix
-from sklearn.metrics import plot_confusion_matrix
+y_pred= clf.predict(X)     # It will give the  
 
-#y_pred = clf.predict(X)
-plot_confusion_matrix(clf,X, y)
+target_names = ["FRAUD","NO FRAUD"] 
+
+ 
+print(classification_report(y, y_pred,target_names=target_names)) 
+
 ```
+![png](README_files/train_1.png)
+As you can see, it’s at 95% percent accuracy. It means that the model can correctly identify most of the examples. Since our goal is to have a model capable of generalizing on unseen data, you can imagine that high levels of accuracy in training is related to good results, right? 
 
-    FutureWarning: Function plot_confusion_matrix is deprecated; Function `plot_confusion_matrix` is deprecated in 1.0 and will be removed in 1.2. Use one of the class methods: ConfusionMatrixDisplay.from_predictions or ConfusionMatrixDisplay.from_estimator.
+However, that's not the case. High levels of accuracy in training means that the model has a perfect understanding of the data provided (train). Test cases are not necessarily equal to train examples -- the accuracy there could drop from 95% in training to ~50% in test.  
 
+For example, if you’re building a model to detect cows and you get the 100% accuracy in train, when you move to test it won’t be able to detect a slightly different cow, your model is not able to generalize. Known as "overfitting,” there are multiple ways to avoid it. Random samples, equally distributed datasets, cross-validation, early stopping or regularization between other techniques are useful. 
 
+Note: It’s a good thing when you get high levels of accuracy in "test" (inference)!
 
+```python 
+## Confusion matrix 
 
+from sklearn.metrics import plot_confusion_matrix 
 
-    <sklearn.metrics._plot.confusion_matrix.ConfusionMatrixDisplay at 0x17477ee20>
+ 
 
+#y_pred = clf.predict(X) 
 
-
-
-    
-![png](README_files/Main_69_2.png)
-    
-
-
-
-```python
-y_test
+plot_confusion_matrix(clf,X, y) 
 ```
+![png](README_files/confu.png)
 
+#### Performance in TEST
+This next step is known as inference.  Now that you’ve trained the algorithm trained, you need to verify the performance on unseen data. You’ll test with the same metrics you did for training, but it's time to start thinking about how this model will perform in your solution. For example: Will the implementation consist of thousands of inferences at the same time? In that case, you’ll have pay attention to the time the algorithm takes to give you the result (fraud vs no fraud), you will probably choose the algorithm that gives you the result faster, normally combined with analysis of the hardware and software optimizations available.
 
+```python 
+test_pred=clf.predict(test)  
 
+ 
+target_names = ["FRAUD","NO FRAUD"] 
 
-    50563     0
-    208595    0
-    10897     1
-    9487      1
-    57615     1
-             ..
-    12369     1
-    184116    0
-    241445    1
-    42756     1
-    73857     1
-    Name: Class, Length: 197, dtype: int64
-
-
-
-
-```python
-# lets check on what we cares us. TEST data!
-
-test_pred=clf.predict(test) 
-
-target_names = ["FRAUD","NO FRAUD"]
-
+ 
 print(classification_report(y_test, test_pred,target_names=target_names))
 ```
-
-                  precision    recall  f1-score   support
-    
-           FRAUD       0.85      0.99      0.92        99
-        NO FRAUD       0.99      0.83      0.90        98
-    
-        accuracy                           0.91       197
-       macro avg       0.92      0.91      0.91       197
-    weighted avg       0.92      0.91      0.91       197
-    
-
-
+![png](README_files/accuracy_2.png)
 
 ```python
-
-
 plot_confusion_matrix(clf,test, y_test)
 ```
+![png](README_files/confu_2.png)
 
-    FutureWarning: Function plot_confusion_matrix is deprecated; Function `plot_confusion_matrix` is deprecated in 1.0 and will be removed in 1.2. Use one of the class methods: ConfusionMatrixDisplay.from_predictions or ConfusionMatrixDisplay.from_estimator.
+As you can see there’s a drop in metrics results when making the inference. It’s still a good predictor but it makes mistakes, and you should evaluate how important are those mistakes are overall. As a guideline, a model with 85% precision on fraud cases is not bad at all.
+### Model 2 : Decision Trees
 
+A decision tree is a type of supervised learning. A decision tree can help you decide a question like: “Is this a good day to code?” The inputs could be factors such as time of day, external noise, and hours coding. The algorithm will find in the training data the best split to classify if it’s a good day to code or it doesn’t. The result might look like the following:
+![png](README_files/dt.png)
+The concept was first introduced by Leo Breiman in 1984 (Breiman, 2017). Here you'll use [Random Forests](https://www.stat.berkeley.edu/~breiman/RandomForests) which is a decision tree-based algorithm that builds several trees while training and selects the best to use. [XGboost](https://xgboost.ai/) or [LightGBM](https://lightgbm.readthedocs.io/en/v3.3.2), and many others share the same concept behind with different approaches and techniques to build the decision trees.
 
-
-
-
-    <sklearn.metrics._plot.confusion_matrix.ConfusionMatrixDisplay at 0x1746e4be0>
-
-
-
-
-    
-![png](README_files/Main_72_2.png)
-    
-
-
-##### Model 2 : Decision Trees
-
-
-```python
-from sklearn.ensemble import RandomForestClassifier
-```
-
-
-```python
-clf = RandomForestClassifier(max_depth=6, random_state=0)
+Decision trees can give a very intuitive explanation about how the decisions were made. Keep in mind, though, that it might be inadequate when you’re looking to predict continuous values.
+#### TRAIN
+There are multiple parameters you can use to train your [Random Forest algorithm](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html). Here we’re using a “classifier” to fine tune it. In this case, you’ll keep it as simple as possible to get decent results. Start with a different max_depth value. You’re defining the depth of the decisions tree (longer can be better but could overfit the model.) Here you’ll use six, but you can try with different values to see how performance changes.
+```python 
+clf = RandomForestClassifier(max_depth=6, random_state=0) 
 
 clf.fit(X, y)
 ```
 
-
-
-
-<style>#sk-container-id-5 {color: black;background-color: white;}#sk-container-id-5 pre{padding: 0;}#sk-container-id-5 div.sk-toggleable {background-color: white;}#sk-container-id-5 label.sk-toggleable__label {cursor: pointer;display: block;width: 100%;margin-bottom: 0;padding: 0.3em;box-sizing: border-box;text-align: center;}#sk-container-id-5 label.sk-toggleable__label-arrow:before {content: "▸";float: left;margin-right: 0.25em;color: #696969;}#sk-container-id-5 label.sk-toggleable__label-arrow:hover:before {color: black;}#sk-container-id-5 div.sk-estimator:hover label.sk-toggleable__label-arrow:before {color: black;}#sk-container-id-5 div.sk-toggleable__content {max-height: 0;max-width: 0;overflow: hidden;text-align: left;background-color: #f0f8ff;}#sk-container-id-5 div.sk-toggleable__content pre {margin: 0.2em;color: black;border-radius: 0.25em;background-color: #f0f8ff;}#sk-container-id-5 input.sk-toggleable__control:checked~div.sk-toggleable__content {max-height: 200px;max-width: 100%;overflow: auto;}#sk-container-id-5 input.sk-toggleable__control:checked~label.sk-toggleable__label-arrow:before {content: "▾";}#sk-container-id-5 div.sk-estimator input.sk-toggleable__control:checked~label.sk-toggleable__label {background-color: #d4ebff;}#sk-container-id-5 div.sk-label input.sk-toggleable__control:checked~label.sk-toggleable__label {background-color: #d4ebff;}#sk-container-id-5 input.sk-hidden--visually {border: 0;clip: rect(1px 1px 1px 1px);clip: rect(1px, 1px, 1px, 1px);height: 1px;margin: -1px;overflow: hidden;padding: 0;position: absolute;width: 1px;}#sk-container-id-5 div.sk-estimator {font-family: monospace;background-color: #f0f8ff;border: 1px dotted black;border-radius: 0.25em;box-sizing: border-box;margin-bottom: 0.5em;}#sk-container-id-5 div.sk-estimator:hover {background-color: #d4ebff;}#sk-container-id-5 div.sk-parallel-item::after {content: "";width: 100%;border-bottom: 1px solid gray;flex-grow: 1;}#sk-container-id-5 div.sk-label:hover label.sk-toggleable__label {background-color: #d4ebff;}#sk-container-id-5 div.sk-serial::before {content: "";position: absolute;border-left: 1px solid gray;box-sizing: border-box;top: 0;bottom: 0;left: 50%;z-index: 0;}#sk-container-id-5 div.sk-serial {display: flex;flex-direction: column;align-items: center;background-color: white;padding-right: 0.2em;padding-left: 0.2em;position: relative;}#sk-container-id-5 div.sk-item {position: relative;z-index: 1;}#sk-container-id-5 div.sk-parallel {display: flex;align-items: stretch;justify-content: center;background-color: white;position: relative;}#sk-container-id-5 div.sk-item::before, #sk-container-id-5 div.sk-parallel-item::before {content: "";position: absolute;border-left: 1px solid gray;box-sizing: border-box;top: 0;bottom: 0;left: 50%;z-index: -1;}#sk-container-id-5 div.sk-parallel-item {display: flex;flex-direction: column;z-index: 1;position: relative;background-color: white;}#sk-container-id-5 div.sk-parallel-item:first-child::after {align-self: flex-end;width: 50%;}#sk-container-id-5 div.sk-parallel-item:last-child::after {align-self: flex-start;width: 50%;}#sk-container-id-5 div.sk-parallel-item:only-child::after {width: 0;}#sk-container-id-5 div.sk-dashed-wrapped {border: 1px dashed gray;margin: 0 0.4em 0.5em 0.4em;box-sizing: border-box;padding-bottom: 0.4em;background-color: white;}#sk-container-id-5 div.sk-label label {font-family: monospace;font-weight: bold;display: inline-block;line-height: 1.2em;}#sk-container-id-5 div.sk-label-container {text-align: center;}#sk-container-id-5 div.sk-container {/* jupyter's `normalize.less` sets `[hidden] { display: none; }` but bootstrap.min.css set `[hidden] { display: none !important; }` so we also need the `!important` here to be able to override the default hidden behavior on the sphinx rendered scikit-learn.org. See: https://github.com/scikit-learn/scikit-learn/issues/21755 */display: inline-block !important;position: relative;}#sk-container-id-5 div.sk-text-repr-fallback {display: none;}</style><div id="sk-container-id-5" class="sk-top-container"><div class="sk-text-repr-fallback"><pre>RandomForestClassifier(max_depth=6, random_state=0)</pre><b>In a Jupyter environment, please rerun this cell to show the HTML representation or trust the notebook. <br />On GitHub, the HTML representation is unable to render, please try loading this page with nbviewer.org.</b></div><div class="sk-container" hidden><div class="sk-item"><div class="sk-estimator sk-toggleable"><input class="sk-toggleable__control sk-hidden--visually" id="sk-estimator-id-5" type="checkbox" checked><label for="sk-estimator-id-5" class="sk-toggleable__label sk-toggleable__label-arrow">RandomForestClassifier</label><div class="sk-toggleable__content"><pre>RandomForestClassifier(max_depth=6, random_state=0)</pre></div></div></div></div></div>
-
-
-
-
+#### Performance in TRAIN
+Check the performance in train. The results seem slightly better than logistic regression.
 ```python
-y_pred_RF= clf.predict(X)
-target_names = ["FRADUD","NO FRAUD"]
+y_pred_RF= clf.predict(X) 
 
-print(classification_report(y, y_pred_RF,target_names=target_names))
+target_names = ["FRADUD","NO FRAUD"] 
+
+ 
+print(classification_report(y, y_pred_RF,target_names=target_names)) 
 ```
 
-                  precision    recall  f1-score   support
-    
-          FRADUD       0.96      1.00      0.98       374
-        NO FRAUD       1.00      0.94      0.97       271
-    
-        accuracy                           0.97       645
-       macro avg       0.98      0.97      0.97       645
-    weighted avg       0.97      0.97      0.97       645
-    
 
+![png](README_files/acu_3.png)
 
+#### Performance in test (inference):
 
 ```python
-## IN TEST 
+test_pred_RF=clf.predict(test)  
 
-test_pred_RF=clf.predict(test) 
+target_names = ["FRAUD","NO FRAUD"] 
 
-target_names = ["FRAUD","NO FRAUD"]
-
-print(classification_report(y_test, test_pred_RF,target_names=target_names))
+print(classification_report(y_test, test_pred_RF,target_names=target_names)) 
 ```
 
-                  precision    recall  f1-score   support
-    
-           FRAUD       0.86      0.99      0.92        99
-        NO FRAUD       0.99      0.84      0.91        98
-    
-        accuracy                           0.91       197
-       macro avg       0.92      0.91      0.91       197
-    weighted avg       0.92      0.91      0.91       197
-    
 
+![png](README_files/acu_4.png)
+After training two simple models you can expect decent performance (in test) on both.
+
+
+### Conclusion
+In this tutorial, you’ve trained a model to detect possible fraudulent transactions with a few different models. The tutorial covered the main concepts around how to train a model that can be used to detect fraud, you’ve prepared/transformed the data and you’ve selected some algorithms to train it.  
+With these results, you can now decide which model to use based on metrics, keeping in mind that execution time is an important topic when implementing the algorithm. Your model is almost ready to implement in your application. The next step is to optimize container packing (more on that [here](https://www.intel.com/content/www/us/en/developer/tools/oneapi/application-catalog/full-catalog/ai-optimization-tool-for-container-packing.html), then integrate it into your solution to take advantage of the insights the model will give you.  
+
+The model you trained in this tutorial can potentially save your company time and money by proactively spotting transaction fraud. A recent Gartner [report](https://www.gartner.com/en/newsroom/press-releases/2022-05-24-gartner-identifies-three-technology-trends-gaining-tr) notes the uptick of banks using AI in growth areas such as fraud detection, trading prediction and risk factor modeling.  
+
+### References
+Breiman, L. (2017). Classification and regression trees. Routledge. 
+
+Hilbe, J. M. (2017). Logistic Regression Models. Taylor & Francis Ltd. 
