@@ -396,7 +396,7 @@ sub_sample_plot
 
 
     
-![png](Main_files/Main_29_2.png)
+![png](README_files/29_2.png)
     
 
 
@@ -806,7 +806,7 @@ X_train['Amount'].plot(kind='kde')
 
 
     
-![png](Main_files/Main_47_1.png)
+![png](README_files/Main_47_1.png)
     
 
 
@@ -828,7 +828,7 @@ X_train['V1'].plot(kind='kde',xlim=(-100,100))
 
 
     
-![png](Main_files/Main_48_2.png)
+![png](README_files/Main_48_2.png)
     
 
 
@@ -1107,7 +1107,7 @@ dataset_std.plot(kind='kde',xlim=([-5,5]),legend=False)
 
 
     
-![png](Main_files/Main_51_1.png)
+![png](README_files/Main_51_1.png)
     
 
 
@@ -1456,7 +1456,7 @@ plt.show()
 
 
     
-![png](Main_files/Main_54_0.png)
+![png](README_files/Main_54_0.png)
     
 
 
@@ -2453,7 +2453,7 @@ plot_confusion_matrix(clf,X, y)
 
 
     
-![png](Main_files/Main_69_2.png)
+![png](README_files/Main_69_2.png)
     
 
 
@@ -2521,7 +2521,7 @@ plot_confusion_matrix(clf,test, y_test)
 
 
     
-![png](Main_files/Main_72_2.png)
+![png](README_files/Main_72_2.png)
     
 
 
