@@ -1,4 +1,4 @@
 # Tutorials
-This repository is intended to provide several tutorials, some of them are published and others are just ideas.
+This repository is intended to provide several tutorials
 
-Comments are welcome!
+Contributions are welcome!
