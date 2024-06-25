@@ -1,5 +1,9 @@
 # Tutorials
+Welcome to Intel Open Ecosystem reference code repository! 
+
 This repository is intended to provide several tutorials
+
+## [From AIPC to the Cloud]([https://github.com/intel/open-ecosystem-ref-code/tree/main/Optimized%20Fraud%20Detection](https://github.com/intel/open-ecosystem-ref-code/tree/main/From-AIPC-to-Cloud))
 
 ## [Optimized Fraud Detection](https://github.com/intel/open-ecosystem-ref-code/tree/main/Optimized%20Fraud%20Detection)
 * [Part 1 - Preprocessing - Fraud Detection with Modlin](https://www.intel.com/content/www/us/en/developer/articles/technical/fraud-detection-with-distribution-of-modin.html)
