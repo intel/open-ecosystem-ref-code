@@ -3,7 +3,7 @@ Welcome to Intel Open Ecosystem reference code repository!
 
 This repository is intended to provide several tutorials
 
-## [From AIPC to the Cloud](https://github.com/intel/open-ecosystem-ref-code/tree/main/Optimized%20Fraud%20Detection](https://github.com/intel/open-ecosystem-ref-code/tree/main/From-AIPC-to-Cloud)
+## [From AIPC to the Cloud](https://github.com/intel/open-ecosystem-ref-code/tree/main/From-AIPC-to-Cloud)
 
 A tutorial to train CIFAR-10 in AIPC and cloud, enhancing model training, performance, scalability, and deployment. Based on PyTorch tutorial (https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html).
 
