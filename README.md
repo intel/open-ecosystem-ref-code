@@ -13,3 +13,5 @@ A tutorial to train CIFAR-10 in AIPC and cloud, enhancing model training, perfor
 * [Part 3 - Training - Fraud Detection Model](https://www.intel.com/content/www/us/en/developer/articles/technical/train-fraud-detection-model-extension-scikit-learn.html)
 
 Contributions are welcome!
+
+[Check out the Open at Intel Podcast!](https://openatintel.podbean.com)
