@@ -1,5 +1,5 @@
 # Tutorials
-Welcome to Intel Open Ecosystem reference code repository! 
+Welcome to [Intel Open Ecosystem](https://www.intel.com/content/www/us/en/developer/topic-technology/open/overview.html) reference code repository! 
 
 This repository is intended to provide several tutorials
 
