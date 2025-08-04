@@ -5,7 +5,7 @@ Intel no longer accepts patches to this project.
  If you have an ongoing need to use this project, are interested in independently developing it, or would like to maintain patches for the open source software community, please create your own fork of this project.  
   
 # Tutorials
-Welcome to Intel Open Ecosystem reference code repository! 
+Welcome to [Intel Open Ecosystem](https://www.intel.com/content/www/us/en/developer/topic-technology/open/overview.html) reference code repository! 
 
 This repository is intended to provide several tutorials
 
